@@ -1,0 +1,12 @@
+langchain
+langchain-core
+langchain-groq
+langchain-mcp-adapters
+langgraph
+langgraph-checkpoint-postgres
+psycopg[binary]
+mcp
+python-dotenv
+streamlit
+requests
+pydantic
