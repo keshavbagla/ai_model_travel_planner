@@ -1,5 +1,6 @@
 import os
 import asyncio
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,9 +30,11 @@ client = MultiServerMCPClient(
     {
         "tavily": {
             "transport": "streamable_http",
-            "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}",
+            "url": (
+                f"https://mcp.tavily.com/mcp/"
+                f"?tavilyApiKey={TAVILY_API_KEY}"
+            ),
         },
-
         "aviationstack": {
             "transport": "stdio",
             "command": AVIATION_MCP_PYTHON,
@@ -45,7 +48,6 @@ client = MultiServerMCPClient(
                 "AVIATION_STACK_API_KEY": AVIATIONSTACK_API_KEY,
             },
         },
-
         "weather": {
             "transport": "stdio",
             "command": os.sys.executable,
@@ -64,8 +66,10 @@ aviation_tools = {}
 weather_tool = None
 forecast_tool = None
 
+
 async def initialize_mcp():
-    global search_tool, aviation_tools
+    global search_tool
+    global aviation_tools
 
     if search_tool is not None and aviation_tools:
         return
@@ -75,19 +79,34 @@ async def initialize_mcp():
     print("\nAvailable MCP Tools:\n")
 
     for tool in tools:
-        print(tool.name)
+        print(f"- {tool.name}")
+
+    print()
 
     search_tool = next(
-        tool
-        for tool in tools
-        if tool.name == "tavily_search"
+        (
+            tool
+            for tool in tools
+            if tool.name == "tavily_search"
+        ),
+        None
     )
+
+    if search_tool is None:
+        raise RuntimeError(
+            "Tavily search tool not found."
+        )
 
     aviation_tools = {
         tool.name: tool
         for tool in tools
-        if tool.name != "tavily_search"
+        if tool.name not in {
+            "tavily_search",
+            "get_current_weather",
+            "get_forecast",
+        }
     }
+
 
 async def tavily_mcp_search(query: str):
     await initialize_mcp()
@@ -97,6 +116,7 @@ async def tavily_mcp_search(query: str):
             "query": query
         }
     )
+
 
 async def aviation_mcp_call(
     tool_name: str,
@@ -113,68 +133,152 @@ async def aviation_mcp_call(
         tool_args or {}
     )
 
+
 async def get_airports():
     await initialize_mcp()
 
-    tool = aviation_tools.get("list_airports")
+    tool = aviation_tools.get(
+        "list_airports"
+    )
 
     if not tool:
         return "Airport tool unavailable"
 
     return await tool.ainvoke({})
 
+
 async def get_airlines():
     await initialize_mcp()
 
-    tool = aviation_tools.get("list_airlines")
+    tool = aviation_tools.get(
+        "list_airlines"
+    )
 
     if not tool:
         return "Airline tool unavailable"
 
     return await tool.ainvoke({})
 
-async def initialize_weather_tools():
-    global weather_tool, forecast_tool
 
-    if weather_tool is not None and forecast_tool is not None:
+async def initialize_weather_tools():
+    global weather_tool
+    global forecast_tool
+
+    if (
+        weather_tool is not None
+        and forecast_tool is not None
+    ):
         return
 
     tools = await client.get_tools()
 
     weather_tool = next(
-        tool
-        for tool in tools
-        if tool.name == "get_current_weather"
+        (
+            tool
+            for tool in tools
+            if tool.name == "get_current_weather"
+        ),
+        None
     )
 
     forecast_tool = next(
-        tool
-        for tool in tools
-        if tool.name == "get_forecast"
+        (
+            tool
+            for tool in tools
+            if tool.name == "get_forecast"
+        ),
+        None
     )
+
+    if weather_tool is None:
+        raise RuntimeError(
+            "get_current_weather MCP tool not found."
+        )
+
+    if forecast_tool is None:
+        raise RuntimeError(
+            "get_forecast MCP tool not found."
+        )
+
+
+def parse_mcp_json_result(result):
+    if isinstance(result, dict):
+        return result
+
+    if isinstance(result, list):
+        if not result:
+            return {}
+
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+
+            text_content = item.get("text")
+
+            if text_content is None:
+                continue
+
+            if isinstance(text_content, dict):
+                return text_content
+
+            if isinstance(text_content, str):
+                try:
+                    return json.loads(text_content)
+                except json.JSONDecodeError:
+                    return {
+                        "error": "Invalid JSON returned by MCP weather tool",
+                        "raw": text_content,
+                    }
+
+        return {
+            "error": "No text content found in MCP response",
+            "raw": result,
+        }
+
+    if isinstance(result, str):
+        try:
+            return json.loads(result)
+        except json.JSONDecodeError:
+            return {
+                "error": "Invalid JSON returned by MCP weather tool",
+                "raw": result,
+            }
+
+    return {
+        "error": "Unexpected MCP response format",
+        "raw": str(result),
+    }
+
 
 async def weather_mcp_search(city: str):
     await initialize_weather_tools()
 
-    return await weather_tool.ainvoke(
+    result = await weather_tool.ainvoke(
         {
             "city": city
         }
     )
+
+    return parse_mcp_json_result(result)
+
 
 async def forecast_mcp_search(city: str):
     await initialize_weather_tools()
 
-    return await forecast_tool.ainvoke(
+    result = await forecast_tool.ainvoke(
         {
             "city": city
         }
     )
+
+    return parse_mcp_json_result(result)
+
 
 llm = ChatGroq(
     model="openai/gpt-oss-120b",
     temperature=0
 )
+
 
 def extract_destination(query: str):
     prompt = f"""
@@ -190,9 +294,52 @@ Return only destination name.
 
     return response.content.strip()
 
+
+async def test_weather(city: str):
+    print("\n" + "=" * 60)
+    print(f"WEATHER TEST: {city}")
+    print("=" * 60)
+
+    try:
+        current_weather = await weather_mcp_search(city)
+
+        print("\nCurrent Weather:")
+        print(
+            json.dumps(
+                current_weather,
+                indent=2,
+                ensure_ascii=False
+            )
+        )
+
+    except Exception as e:
+        print("\nCurrent weather error:")
+        print(str(e))
+
+    try:
+        forecast = await forecast_mcp_search(city)
+
+        print("\nForecast:")
+        print(
+            json.dumps(
+                forecast,
+                indent=2,
+                ensure_ascii=False
+            )
+        )
+
+    except Exception as e:
+        print("\nForecast error:")
+        print(str(e))
+
+
 async def main():
     await initialize_mcp()
     await initialize_weather_tools()
+
+    print("\nMCP initialization completed successfully.")
+    print("\nWeather tools are ready.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
