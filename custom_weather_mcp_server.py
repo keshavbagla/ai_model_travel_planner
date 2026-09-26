@@ -3,6 +3,7 @@ import requests
 import os
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 mcp = FastMCP("Weather Server")
@@ -17,17 +18,20 @@ def get_current_weather(city: str):
         params={
             "q": city,
             "appid": OPENWEATHER_API_KEY,
-            "units": "metric"
+            "units": "metric",
         },
-        timeout=15
+        timeout=15,
     )
 
     data = response.json()
 
     if response.status_code != 200:
         return {
-            "error": data.get("message", "Unable to fetch current weather"),
-            "city": city
+            "error": data.get(
+                "message",
+                "Unable to fetch current weather",
+            ),
+            "city": city,
         }
 
     return {
@@ -37,7 +41,7 @@ def get_current_weather(city: str):
         "feels_like_c": data["main"]["feels_like"],
         "humidity": data["main"]["humidity"],
         "condition": data["weather"][0]["description"],
-        "wind_speed": data["wind"]["speed"]
+        "wind_speed": data["wind"]["speed"],
     }
 
 
@@ -48,32 +52,37 @@ def get_forecast(city: str):
         params={
             "q": city,
             "appid": OPENWEATHER_API_KEY,
-            "units": "metric"
+            "units": "metric",
         },
-        timeout=15
+        timeout=15,
     )
 
     data = response.json()
 
     if response.status_code != 200:
         return {
-            "error": data.get("message", "Unable to fetch forecast"),
-            "city": city
+            "error": data.get(
+                "message",
+                "Unable to fetch weather forecast",
+            ),
+            "city": city,
         }
 
     forecast = []
 
     for item in data.get("list", [])[:5]:
-        forecast.append({
-            "datetime": item["dt_txt"],
-            "temperature": item["main"]["temp"],
-            "weather": item["weather"][0]["description"]
-        })
+        forecast.append(
+            {
+                "datetime": item["dt_txt"],
+                "temperature": item["main"]["temp"],
+                "weather": item["weather"][0]["description"],
+            }
+        )
 
     return {
         "city": data.get("city", {}).get("name", city),
         "country": data.get("city", {}).get("country"),
-        "forecast": forecast
+        "forecast": forecast,
     }
 
 
