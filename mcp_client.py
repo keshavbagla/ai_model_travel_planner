@@ -89,7 +89,7 @@ async def initialize_mcp():
             for tool in tools
             if tool.name == "tavily_search"
         ),
-        None
+        None,
     )
 
     if search_tool is None:
@@ -120,7 +120,7 @@ async def tavily_mcp_search(query: str):
 
 async def aviation_mcp_call(
     tool_name: str,
-    tool_args: dict = None
+    tool_args: dict = None,
 ):
     await initialize_mcp()
 
@@ -178,7 +178,7 @@ async def initialize_weather_tools():
             for tool in tools
             if tool.name == "get_current_weather"
         ),
-        None
+        None,
     )
 
     forecast_tool = next(
@@ -187,7 +187,7 @@ async def initialize_weather_tools():
             for tool in tools
             if tool.name == "get_forecast"
         ),
-        None
+        None,
     )
 
     if weather_tool is None:
@@ -276,7 +276,7 @@ async def forecast_mcp_search(city: str):
 
 llm = ChatGroq(
     model="openai/gpt-oss-120b",
-    temperature=0
+    temperature=0,
 )
 
 
@@ -308,7 +308,7 @@ async def test_weather(city: str):
             json.dumps(
                 current_weather,
                 indent=2,
-                ensure_ascii=False
+                ensure_ascii=False,
             )
         )
 
@@ -324,7 +324,7 @@ async def test_weather(city: str):
             json.dumps(
                 forecast,
                 indent=2,
-                ensure_ascii=False
+                ensure_ascii=False,
             )
         )
 
@@ -339,6 +339,8 @@ async def main():
 
     print("\nMCP initialization completed successfully.")
     print("\nWeather tools are ready.")
+
+    await test_weather("Tokyo")
 
 
 if __name__ == "__main__":
